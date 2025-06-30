@@ -1,0 +1,6 @@
+@MemoirMind.Api_HostAddress = http://localhost:5299
+
+GET {{MemoirMind.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
