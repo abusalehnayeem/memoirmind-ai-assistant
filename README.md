@@ -47,14 +47,6 @@ This project demonstrates:
 
 ---
 
-## 💼 Why This Matters for Jobs in Europe
-1. **Cloud Skills**: Azure PostgreSQL/Docker integration aligns with enterprise trends.
-2. **GDPR Compliance**: Structured data storage demonstrates data privacy awareness.
-3. **Cost Efficiency**: Uses open-source tools (Ollama) instead of paid LLM APIs.
-4. **DevOps**: GitHub Actions for CI/CD pipelines.
-
----
-
 ## 🚀 Getting Started
 ### Local Setup (Docker)
 ```bash
