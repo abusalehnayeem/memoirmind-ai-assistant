@@ -58,8 +58,5 @@ docker-compose -f docker/postgres.Dockerfile up -d
 # Start Ollama
 docker-compose -f docker/ollama.Dockerfile up -d
 
-# Configure environment variables
-cp .env.example .env
-
 # Run backend
 dotnet run --project src/TelegramBot.Api
