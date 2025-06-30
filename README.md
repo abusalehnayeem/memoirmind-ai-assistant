@@ -13,7 +13,7 @@
 
 # MemoirMind AI Assistant 🧠
 
-A personalized AI assistant built with **C#/.NET Core**, **PostgreSQL (pgvector)**, and **Ollama (Semantic Kernel)**. Designed for **long-term memory retention**, automation, and GDPR compliance — ideal for showcasing full-stack and AI integration skills in European tech roles.
+A personalized AI assistant built with **C#/.NET Core**, **PostgreSQL (pgvector)**, and **Ollama (Semantic Kernel)**. Designed for **long-term memory retention**, automation, and GDPR compliance — ideal for showcasing full-stack and AI integration skills.
 
 ---
 
