@@ -1,3 +1,14 @@
+[![Build Status](https://github.com/abusalehnayeem/your-repo-name/actions/workflows/build-deploy.yml/badge.svg )](https://github.com/abusalehnayeem/your-repo-name/actions )
+[![License: MIT](https://img.shields.io/github/license/abusalehnayeem/your-repo-name )](https://github.com/abusalehnayeem/your-repo-name/blob/main/LICENSE )
+[![GitHub Stars](https://img.shields.io/github/stars/abusalehnayeem/your-repo-name )](https://github.com/abusalehnayeem/your-repo-name/stargazers )
+[![Docker Pulls](https://img.shields.io/docker/pulls/your-dockerhub-username/your-image-name )](https://hub.docker.com/r/your-dockerhub-username/your-image-name )
+[![CodeFactor Grade](https://img.shields.io/codefactor/grade/github/abusalehnayeem/your-repo-name?label=code%20quality)]( https://www.codefactor.io/repository/github/abusalehnayeem/your-repo-name )
+[![Dependabot Enabled](https://img.shields.io/badge/dependabot-enabled-brightgreen )](https://github.com/abusalehnayeem/your-repo-name/security/dependabot )
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white)]( https://www.postgresql.org/ )
+[![C#](https://img.shields.io/badge/C%23-239120?logo=c-sharp&logoColor=white)]( https://dotnet.microsoft.com/ )
+[![.NET Core](https://img.shields.io/badge/.NET_Core-5C2D91?logo=dotnet&logoColor=white)]( https://dotnet.microsoft.com/ )
+[![Ollama](https://img.shields.io/badge/Ollama-4A7856?logo=ollama&logoColor=white)]( https://ollama.ai/ )
+
 # MemoirMind AI Assistant 🧠
 
 A personalized AI assistant built with **C#/.NET Core**, **PostgreSQL (pgvector)**, and **Ollama (Semantic Kernel)**. Designed for **long-term memory retention**, automation, and GDPR compliance — ideal for showcasing full-stack and AI integration skills in European tech roles.
