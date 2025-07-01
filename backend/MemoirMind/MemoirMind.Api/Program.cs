@@ -20,7 +20,8 @@ builder.Services.AddHttpClient("tgwebhook").RemoveAllLoggers()
     .AddTypedClient(httpClient => new TelegramBotClient(token, httpClient));
 
 
-// 3) Register Semantic Kernel  
+// 3) Register Semantic Kernel
+
 builder.Services.AddKernel();
 builder.Services.AddOllamaChatCompletion(ollamaCfg["model"]!, new Uri(ollamaCfg["endpoint"]!));
 
@@ -64,7 +65,8 @@ app.MapPost("/telegram", async (Update update, TelegramBotClient botClient, Kern
             TopP = 0.9f,
             TopK = 100,
             Temperature = 0.7f,
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+            NumPredict = 200,
+            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
         };
 
         // Define your prompt template as a string
@@ -75,6 +77,8 @@ app.MapPost("/telegram", async (Update update, TelegramBotClient botClient, Kern
                               - Factually accurate
                               - Contextually appropriate
                               - Human-friendly and conversational
+                              [Chat History]
+                              {{$chat_history}}
 
                               [User Query]
                               {{$user_input}}
@@ -86,10 +90,9 @@ app.MapPost("/telegram", async (Update update, TelegramBotClient botClient, Kern
                               4. Add examples when helpful
                               5. Suggest follow-up questions when relevant
                               6. If unsure, ask for clarification rather than guessing
-                              7. **Do not** output any `<think>` blocks—those are for your internal reasoning only.
+                              7. Do NOT output any internal thought tags like <think>…</think>; only return the final user-facing text.
 
                               [Response Format]
-                              - Start with relevant emoji (🎯 for facts, 💡 for ideas, 🛠️ for advice)
                               - Keep paragraphs under 3 sentences
                               - Use bold for key terms
                               - Avoid technical jargon unless requested
@@ -106,10 +109,11 @@ app.MapPost("/telegram", async (Update update, TelegramBotClient botClient, Kern
             }
         };
         // Execute with Semantic Kernel
-        var response = await kernel.InvokePromptAsync(
+        var response = await kernel
+            .InvokePromptAsync(
             prompt,
-            kernelArguments
-        ).ConfigureAwait(false);
+            kernelArguments)
+            .ConfigureAwait(false);
 
         // Remove anything between <think> and </think>, including the tags themselves
         var cleanedResponse = Regex.Replace(response.ToString(),
