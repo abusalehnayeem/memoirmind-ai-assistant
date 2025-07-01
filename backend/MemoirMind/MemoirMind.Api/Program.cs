@@ -1,4 +1,6 @@
-﻿using Microsoft.SemanticKernel;
+﻿using System.Text.RegularExpressions;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.Ollama;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -20,7 +22,7 @@ builder.Services.AddHttpClient("tgwebhook").RemoveAllLoggers()
 
 // 3) Register Semantic Kernel  
 builder.Services.AddKernel();
-builder.Services.AddOllamaChatCompletion(modelId: ollamaCfg["model"]!, endpoint: new Uri(ollamaCfg["endpoint"]!));
+builder.Services.AddOllamaChatCompletion(ollamaCfg["model"]!, new Uri(ollamaCfg["endpoint"]!));
 
 
 var app = builder.Build();
@@ -57,11 +59,65 @@ app.MapPost("/telegram", async (Update update, TelegramBotClient botClient, Kern
 {
     if (update.Message is { Text: { } messageText, Chat.Id: var chatId })
     {
-        // Use Semantic Kernel to process the message
-        var response = await kernel.InvokePromptAsync($"Answer in <200 characters: {messageText}").ConfigureAwait(false);
+        var settings = new OllamaPromptExecutionSettings
+        {
+            TopP = 0.9f,
+            TopK = 100,
+            Temperature = 0.7f,
+            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+        };
 
+        // Define your prompt template as a string
+        const string prompt = """
+                              [Role]
+                              You are a helpful AI assistant for a Telegram bot. Your responses should be:
+                              - Clear and concise
+                              - Factually accurate
+                              - Contextually appropriate
+                              - Human-friendly and conversational
+
+                              [User Query]
+                              {{$user_input}}
+
+                              [Instructions]
+                              1. Understand the user's intent and context
+                              2. Provide practical, actionable information
+                              3. Use bullet points for complex answers
+                              4. Add examples when helpful
+                              5. Suggest follow-up questions when relevant
+                              6. If unsure, ask for clarification rather than guessing
+                              7. **Do not** output any `<think>` blocks—those are for your internal reasoning only.
+
+                              [Response Format]
+                              - Start with relevant emoji (🎯 for facts, 💡 for ideas, 🛠️ for advice)
+                              - Keep paragraphs under 3 sentences
+                              - Use bold for key terms
+                              - Avoid technical jargon unless requested
+
+                              [Response]
+                              """;
+
+        var kernelArguments = new KernelArguments
+        {
+            ["user_input"] = messageText,
+            ExecutionSettings = new Dictionary<string, PromptExecutionSettings>
+            {
+                { "default", settings }
+            }
+        };
+        // Execute with Semantic Kernel
+        var response = await kernel.InvokePromptAsync(
+            prompt,
+            kernelArguments
+        ).ConfigureAwait(false);
+
+        // Remove anything between <think> and </think>, including the tags themselves
+        var cleanedResponse = Regex.Replace(response.ToString(),
+            @"<think>[\s\S]*?<\/think>",
+            string.Empty,
+            RegexOptions.IgnoreCase).Trim();
         // Send response back to Telegram
-        await botClient.SendMessage(chatId, response.ToString());
+        await botClient.SendMessage(chatId, cleanedResponse);
     }
 
     return Results.Ok();
