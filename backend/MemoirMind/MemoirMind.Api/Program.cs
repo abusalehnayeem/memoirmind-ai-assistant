@@ -1,6 +1,7 @@
 ﻿using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.InMemory;
 using Microsoft.SemanticKernel.Connectors.Ollama;
@@ -32,8 +33,28 @@ builder.Services
     .AddOllamaChatCompletion(ollamaCfg["chatCompletionModel"]!, new Uri(ollamaCfg["endpoint"]!))
     .AddOllamaEmbeddingGenerator(ollamaCfg["embeddingGeneratorModel"]!, new Uri(ollamaCfg["endpoint"]!));
 
+// Register In-Memory Vector Store
+builder.Services.AddSingleton<InMemoryVectorStore>();
+
+
+// added rate limiting to avoid hitting Telegram API limits
+builder.Services.AddRateLimiter(rateLimiterOptions =>
+{
+    rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    rateLimiterOptions.AddTokenBucketLimiter("telegram-endpoint", options =>
+    {
+        options.TokenLimit = 100;
+        options.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        options.QueueLimit = 5;
+        options.ReplenishmentPeriod = TimeSpan.FromSeconds(10);
+        options.TokensPerPeriod = 20;
+        options.AutoReplenishment = true;
+    });
+});
 
 var app = builder.Build();
+
+app.MapOpenApi();
 
 // 4) Set Telegram Webhook on startup
 app.Lifetime.ApplicationStarted.Register(async () =>
@@ -52,32 +73,32 @@ app.Lifetime.ApplicationStarted.Register(async () =>
     }
 });
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment()) app.MapOpenApi();
-
 app.UseHttpsRedirection();
+app.UseRateLimiter();
+
 
 app.MapGet("/setWebhook", async (TelegramBotClient bot) =>
 {
     await bot.SetWebhook(webhookUrl);
     return $"Webhook set to {webhookUrl}";
-});
+}).RequireRateLimiting("telegram-endpoint");
 
 app.MapPost("/telegram", async (Update update,
     TelegramBotClient botClient,
     Kernel kernel,
-    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator) =>
+    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+    InMemoryVectorStore vectorStore,
+    HttpContext httpContext) =>
 {
     if (update.Message is not { Text: { } messageText, Chat.Id: var chatId }) return Results.NotFound();
 
     var userId = update.Message.From!.Id.ToString();
     // Get or create user-specific collection
-    var vectorStore = new InMemoryVectorStore();
     var collection = vectorStore.GetCollection<string, VectorStoreRecord<string>>(userId);
-    await collection.EnsureCollectionExistsAsync();
+    await collection.EnsureCollectionExistsAsync(httpContext.RequestAborted);
 
     // Embed & store the incoming user message
-    var embedResults = await embeddingGenerator.GenerateAsync([messageText]);
+    var embedResults = await embeddingGenerator.GenerateAsync([messageText], cancellationToken: httpContext.RequestAborted);
     var userEmbedding = embedResults.FirstOrDefault();
     if (userEmbedding is null)
     {
@@ -85,30 +106,27 @@ app.MapPost("/telegram", async (Update update,
         return Results.NotFound();
     }
 
-    //var record = new VectorStoreRecord<string>
-    //{
-    //    Key = Guid.NewGuid().ToString(),
-    //    Data = $"User: {messageText}",
-    //    Vector = userEmbedding.Vector
-    //};
+    var record = new VectorStoreRecord<string>
+    {
+        Key = Guid.NewGuid().ToString(),
+        Data = $"User: {messageText}",
+        Vector = userEmbedding.Vector
+    };
 
-    var record = CreateVectorStoreRecordEntry(messageText, userEmbedding.Vector);
 
-    await collection.UpsertAsync(record);
+    await collection.UpsertAsync([record]);
 
     //// 3. Retrieve relevant context from vector store
-    var searchVector = (await embeddingGenerator.GenerateAsync(userId)).Vector;
-    var matches = await collection.SearchAsync(searchVector, 5).ToListAsync();
+    var matches = await collection.SearchAsync(userEmbedding.Vector, 5).ToListAsync(httpContext.RequestAborted);
 
     //// 4. Build chat history context
-    var chatHistory = string.Join("\n", matches.OrderByDescending(x => x.Record).Select(x => x.Record));
+    var chatHistory = string.Join("\n", matches.OrderByDescending(x => x.Record.Data).Select(x => x.Record.Data));
 
     var settings = new OllamaPromptExecutionSettings
     {
         TopP = 0.9f,
         TopK = 100,
         Temperature = 0.7f,
-        NumPredict = 200,
         FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
     };
 
@@ -156,7 +174,7 @@ app.MapPost("/telegram", async (Update update,
     var response = await kernel
         .InvokePromptAsync(
             prompt,
-            kernelArguments)
+            kernelArguments, cancellationToken: httpContext.RequestAborted)
         .ConfigureAwait(false);
 
     // Remove anything between <think> and </think>, including the tags themselves
@@ -165,29 +183,9 @@ app.MapPost("/telegram", async (Update update,
         string.Empty,
         RegexOptions.IgnoreCase).Trim();
     // Send response back to Telegram
-    await botClient.SendMessage(chatId, cleanedResponse);
+    await botClient.SendMessage(chatId, cleanedResponse, cancellationToken: httpContext.RequestAborted);
 
     return Results.Ok();
-});
+}).RequireRateLimiting("telegram-endpoint");
 
 app.Run();
-
-VectorStoreRecord<string> CreateVectorStoreRecordEntry(string messageText, ReadOnlyMemory<float>? userEmbeddingVector)
-{
-    return new VectorStoreRecord<string>
-    {
-        Key = Guid.NewGuid().ToString(),
-        Data = $"User: {messageText}",
-        Vector = userEmbeddingVector
-    };
-
-}
-
-public sealed record VectorStoreRecord<TKey>
-{
-    [VectorStoreKey] public TKey? Key { get; set; }
-
-    [VectorStoreData] public string Data { get; set; } = string.Empty;
-
-    [VectorStoreVector(1536)] public ReadOnlyMemory<float>? Vector { get; set; }
-}
