@@ -166,7 +166,7 @@ app.MapPost("/telegram", async (Update update,
         RegexOptions.IgnoreCase).Trim();
 
     // Send response back to Telegram
-    await botClient.SplitAndSendMessageAsync(chatId, cleanedResponse, httpContext.RequestAborted);
+    await botClient.SplitAndSendMessageAsync(chatId, cleanedResponse);
 
     return Results.Ok();
 }).RequireRateLimiting("telegram-endpoint");
