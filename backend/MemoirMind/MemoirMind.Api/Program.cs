@@ -1,7 +1,11 @@
 ﻿using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
+using MemoirMind.Api.EntityModels.VectorMemory;
+using MemoirMind.Api.Extensions;
+using MemoirMind.Api.HostedServices;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.AI;
+using Microsoft.OpenApi;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.InMemory;
 using Microsoft.SemanticKernel.Connectors.Ollama;
@@ -12,19 +16,20 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => { options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_0; });
 
 // 1) load configuration
 var ollamaCfg = builder.Configuration.GetSection("ollama");
 
 // 2) Register Telegram Bot Client
 var token = builder.Configuration["telegram:bot_token"]!;
-var webhookUrl = builder.Configuration["telegram:webhookUrl"]!;
+//var webhookUrl = builder.Configuration["telegram:webhookUrl"]!;
 builder.Services
     .AddHttpClient("tgwebhook")
     .RemoveAllLoggers()
     .AddTypedClient(httpClient => new TelegramBotClient(token, httpClient));
 
+builder.Services.AddHostedService<HookInitializer>();
 
 // 3) Register Semantic Kernel
 
@@ -53,35 +58,10 @@ builder.Services.AddRateLimiter(rateLimiterOptions =>
 });
 
 var app = builder.Build();
-
 app.MapOpenApi();
-
-// 4) Set Telegram Webhook on startup
-app.Lifetime.ApplicationStarted.Register(async () =>
-{
-    var bot = app.Services.GetRequiredService<TelegramBotClient>();
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-
-    try
-    {
-        await bot.SetWebhook(webhookUrl).ConfigureAwait(false);
-        logger.LogInformation("Webhook set to {WebhookUrl}", webhookUrl);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to set webhook");
-    }
-});
 
 app.UseHttpsRedirection();
 app.UseRateLimiter();
-
-
-app.MapGet("/setWebhook", async (TelegramBotClient bot) =>
-{
-    await bot.SetWebhook(webhookUrl);
-    return $"Webhook set to {webhookUrl}";
-}).RequireRateLimiting("telegram-endpoint");
 
 app.MapPost("/telegram", async (Update update,
     TelegramBotClient botClient,
@@ -93,12 +73,14 @@ app.MapPost("/telegram", async (Update update,
     if (update.Message is not { Text: { } messageText, Chat.Id: var chatId }) return Results.NotFound();
 
     var userId = update.Message.From!.Id.ToString();
+
     // Get or create user-specific collection
     var collection = vectorStore.GetCollection<string, VectorStoreRecord<string>>(userId);
     await collection.EnsureCollectionExistsAsync(httpContext.RequestAborted);
 
     // Embed & store the incoming user message
-    var embedResults = await embeddingGenerator.GenerateAsync([messageText], cancellationToken: httpContext.RequestAborted);
+    var embedResults =
+        await embeddingGenerator.GenerateAsync([messageText], cancellationToken: httpContext.RequestAborted);
     var userEmbedding = embedResults.FirstOrDefault();
     if (userEmbedding is null)
     {
@@ -134,10 +116,10 @@ app.MapPost("/telegram", async (Update update,
     const string prompt = """
                           [Role]
                           You are a helpful AI assistant for a Telegram bot. Your responses should be:
-                          - Clear and concise
-                          - Factually accurate
-                          - Contextually appropriate
-                          - Human-friendly and conversational
+                          1. Clear and concise
+                          2. Factually accurate
+                          3. Contextually appropriate
+                          4. Human-friendly and conversational
                           [Chat History]
                           {{$chat_history}}
 
@@ -174,7 +156,7 @@ app.MapPost("/telegram", async (Update update,
     var response = await kernel
         .InvokePromptAsync(
             prompt,
-            kernelArguments, cancellationToken: httpContext.RequestAborted)
+            kernelArguments)
         .ConfigureAwait(false);
 
     // Remove anything between <think> and </think>, including the tags themselves
@@ -182,8 +164,9 @@ app.MapPost("/telegram", async (Update update,
         @"<think>[\s\S]*?<\/think>",
         string.Empty,
         RegexOptions.IgnoreCase).Trim();
+
     // Send response back to Telegram
-    await botClient.SendMessage(chatId, cleanedResponse, cancellationToken: httpContext.RequestAborted);
+    await botClient.SplitAndSendMessageAsync(chatId, cleanedResponse, httpContext.RequestAborted);
 
     return Results.Ok();
 }).RequireRateLimiting("telegram-endpoint");

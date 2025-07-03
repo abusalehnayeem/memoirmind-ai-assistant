@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.VectorData;
 
+namespace MemoirMind.Api.EntityModels.VectorMemory;
+
 public sealed record VectorStoreRecord<TKey>
 {
     [VectorStoreKey] public TKey? Key { get; set; }
