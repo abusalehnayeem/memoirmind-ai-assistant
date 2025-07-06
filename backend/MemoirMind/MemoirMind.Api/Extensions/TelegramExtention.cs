@@ -1,4 +1,6 @@
-﻿using Telegram.Bot;
+﻿using System.Text;
+using System.Text.RegularExpressions;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 
 namespace MemoirMind.Api.Extensions;
@@ -12,53 +14,55 @@ public static class TelegramExtension
         CancellationToken cancellationToken = default)
     {
         const int maxMessageLength = 4096;
-        if (string.IsNullOrWhiteSpace(text))
-            return;
+        if (string.IsNullOrWhiteSpace(text)) return;
 
-        // First split on newlines so we respect paragraphs
-        var paragraphs = text.Split(["\r\n", "\n"], StringSplitOptions.None).Where(x => x.Length > 0).ToArray();
+        // Split text into sentences, preserving punctuation
+        var sentences = Regex.Split(text, @"(?<=[\.\!\?])\s+")
+            .Where(s => s.Length > 0)
+            .ToArray();
+
         var chunks = new List<string>();
+        var currentChunk = new StringBuilder();
 
-        foreach (var paragraph in paragraphs)
+        foreach (var sentence in sentences)
         {
-            if (paragraph.Length <= maxMessageLength)
+            // If a single sentence exceeds max length, fall back to hard chunking
+            if (sentence.Length > maxMessageLength)
             {
-                chunks.Add(paragraph);
+                // flush any accumulated chunk first
+                if (currentChunk.Length > 0)
+                {
+                    chunks.Add(currentChunk.ToString());
+                    currentChunk.Clear();
+                }
+
+                for (var i = 0; i < sentence.Length; i += maxMessageLength)
+                {
+                    var length = Math.Min(maxMessageLength, sentence.Length - i);
+                    chunks.Add(sentence.Substring(i, length));
+                }
+
                 continue;
             }
 
-            var start = 0;
-            while (start < paragraph.Length)
+            // If adding this sentence would exceed limit, flush current chunk
+            if (currentChunk.Length + sentence.Length > maxMessageLength)
             {
-                var remaining = paragraph.Length - start;
-                var take = Math.Min(maxMessageLength, remaining);
-
-                // Try to break on sentence boundary if we're not at the end
-                if (take < remaining)
-                {
-                    var segment = paragraph.Substring(start, take);
-                    // find last ., ?, or ! in that segment
-                    var lastIndexOfAny = segment.LastIndexOfAny(['.', '?', '!']);
-                    // but only accept it if it's reasonably far in (e.g. beyond half the chunk)
-                    if (lastIndexOfAny > maxMessageLength / 4)
-                        // +1 to include the punctuation
-                        take = lastIndexOfAny + 1;
-                }
-
-                // avoid splitting a UTF-16 surrogate
-                if (start + take < paragraph.Length
-                    && char.IsHighSurrogate(paragraph[start + take - 1]))
-                    take--;
-
-                chunks.Add(paragraph.Substring(start, take));
-                start += take;
+                chunks.Add(currentChunk.ToString());
+                currentChunk.Clear();
             }
+
+            currentChunk.Append(sentence).Append(" ");
         }
 
+        // Add any remaining text
+        if (currentChunk.Length > 0)
+            chunks.Add(currentChunk.ToString().Trim());
+
+        // Send each chunk with a small delay
         foreach (var chunk in chunks)
         {
             await botClient.SendMessage(chatId, chunk, cancellationToken: cancellationToken);
-            // small delay to play nice with rate limits
             await Task.Delay(500, cancellationToken);
         }
     }

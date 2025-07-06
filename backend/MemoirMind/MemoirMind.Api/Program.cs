@@ -116,7 +116,7 @@ app.MapPost("/telegram", async (Update update,
     const string prompt = """
                           [Role]
                           You are a helpful AI assistant for a Telegram bot. Your responses should be:
-                          1. Clear and concise
+                          1. Clear and concise and shorten
                           2. Factually accurate
                           3. Contextually appropriate
                           4. Human-friendly and conversational
