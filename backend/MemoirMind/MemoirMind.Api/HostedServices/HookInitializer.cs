@@ -24,16 +24,28 @@ public class HookInitializer(
                 return;
             }
 
-            await bot.SetWebhook(_webhookUrl, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            await bot.SetWebhook(_webhookUrl, cancellationToken: cancellationToken);
             logger.LogInformation("Webhook set to {WebhookUrl}", _webhookUrl);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to set webhook");
+            logger.LogError(ex, "Failed to set webhook!");
         }
     }
 
     // no cleanup needed
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        using var scope = services.CreateScope();
+        var bot = scope.ServiceProvider.GetRequiredService<TelegramBotClient>();
+        try
+        {
+            await bot.DeleteWebhook( cancellationToken: cancellationToken);
+            logger.LogInformation("Removed webhook");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to remove webhook!");
+        }
+    }
 }

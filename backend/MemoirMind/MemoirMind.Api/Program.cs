@@ -1,8 +1,8 @@
 ﻿using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
-using MemoirMind.Api.EntityModels.VectorMemory;
 using MemoirMind.Api.Extensions;
 using MemoirMind.Api.HostedServices;
+using MemoirMind.Api.Models.VectorMemory;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.AI;
 using Microsoft.OpenApi;
